@@ -1,5 +1,5 @@
 TARGET = hello_world
-OBJS = main.o ./hmac-sha1/src/hmac/hmac_sha1.o ./hmac-sha1/src/sha/sha1.o ../common/callback.o
+OBJS = main.o ./hmac-sha1/src/hmac/hmac_sha1.o ./hmac-sha1/src/sha/sha1.o ./base32/base32.o ../common/callback.o
 
 INCDIR = 
 CFLAGS = -O2 -G0 -Wall

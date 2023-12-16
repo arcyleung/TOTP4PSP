@@ -9,10 +9,15 @@ otpauth://totp/<name2>?algorithm=SHA1&digits=6&issuer=<issuer2>&period=30&secret
 ...
 ```
 
-The following fields and corresponding methods are supported:
+The following fields and corresponding methods are currently supported:
 ```
 algorithm=[SHA1|SHA256|SHA512]
 digits=[6-8]
 period=[30-60s]
 secret=<minimum 160-bit string>
 ```
+
+## Building
+
+Prerequisites: psptoolchain/ psp-sdk (psp-gcc)  
+TODO: Add steps

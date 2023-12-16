@@ -6,7 +6,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 #include "hmac-sha1/src/hmac/hmac.h"
+#include "base32/base32.h"
 #include "../common/callback.h"
 
 #define VERS 1 // version
@@ -25,170 +27,192 @@ PSP_HEAP_THRESHOLD_SIZE_KB(0);
 
 #define printf pspDebugScreenPrintf
 
-enum ALGTYPE { SHA1, SHA256, SHA512 };
+enum ALGTYPE
+{
+    SHA1,
+    SHA256,
+    SHA512
+};
 
 // Simple linked list of TOTP key field info, appended as they are parsed from the file
-struct OTPKey {
-	char *name;
-	char *issuer;
-	char *algorithm;
-	uint8_t digits;
-	uint8_t period;
-	char *secret;
+struct OTPKey
+{
+    char *name;
+    char *issuer;
+    char *algorithm;
+    uint8_t digits;
+    uint8_t period;
+    char *secret;
 
-	struct OTPKey *next;
-} *totpKeys;
+    struct OTPKey *next;
+};
 
 char otpfile[] = "ms0:/PSP/COMMON/otpauth_file";
 
-// const struct OTPKey *;
-
-// Modified djb2 just converts string to some id
-uint8_t lookup(char *str)
-    {
-        uint8_t hash = 31;
-        uint8_t c;
-        while ((c = *str++))
-            hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-        return hash;
-    }
-
-void readOTPFile(char* filePath, struct OTPKey *keys) {
-
-	struct OTPKey *cur = totpKeys;
-
-	FILE* filePointer;
-	uint32_t bufferLength = 2048;
-	char buffer[bufferLength]; /* not ISO 90 compatible */
-
-	filePointer = fopen(filePath, "r");
-
-	while(fgets(buffer, bufferLength, filePointer)) {
-		char *optauth;
-		char *rest;
-		optauth = strtok_r(buffer, "?", &rest);
-
-		printf( " %s\n", optauth );
-
-		char *alg = NULL;
-		uint8_t dig = 0;
-		char *iss = NULL;
-		uint8_t per = 0;
-		char *sec = NULL;
-   
-		// Parse
-		while( rest != NULL ) {
-			// printf( " %s\n", rest );
-			char *segment = strtok_r(rest, "&", &rest);
-			char *paramName;
-			char *value;
-			paramName = strtok_r(segment, "=", &value);
-			printf( " %s %u %s \n", paramName, lookup(paramName), value );
-
-			switch(lookup(paramName)) {
-				case ALG:
-					alg = value;
-				break;
-				case DIG:
-					dig = strtol(value, NULL, 10);
-				break;
-				case ISS:
-					iss = value;
-				break;
-				case PER:
-					per = strtol(value, NULL, 10);
-				break;
-				case SEC:
-					sec = value;
-				break;
-			}
-		}
-
-		cur = malloc(sizeof(struct OTPKey));
-		cur->name = optauth;
-		cur->algorithm = alg;
-		cur->digits = dig;
-		cur->period = per;
-		cur->issuer = iss;
-		cur->secret = sec;
-		cur->next = NULL;
-		cur = cur->next;
-	}
-
-	fclose(filePointer);
+// Modified djb2 to convert string to some id
+uint8_t
+lookup(char *str)
+{
+    uint8_t hash = 31;
+    uint8_t c;
+    while ((c = *str++))
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    return hash;
 }
 
-int main(int argc, char **argv)
+struct OTPKey * 
+readOTPFile(char *filePath)
 {
-	time_t   seconds;
-	uint32_t counter;
-	uint8_t  output[20];
-	// uint8_t key[53] = "GZE3PJAYWOOGDXQPI4MQ4EP4WSOTOGIJGY26PZUB5YTMHLLSPUYQ";
-	uint8_t key[] = "12345678901234567890";
-	// int keysize = 53;
+    struct OTPKey *head = (struct OTPKey *) malloc(sizeof(struct OTPKey));
+    struct OTPKey **cur = &head;
 
-	// Need to convert counter from uint32 to 4 bytes
-	uint8_t msg[4];
-	// int msgsize = 53;
-	// basic init
-	pspDebugScreenInit(); // initialize the debug screen
-	setupExitCallback();
+    FILE *filePointer;
+    uint32_t bufferLength = 2048;
+    char buffer[bufferLength]; /* not ISO 90 compatible */
 
-	readOTPFile(otpfile, NULL);
+    filePointer = fopen(filePath, "r");
 
-	while(isRunning())
-	{
-		// printf("%s", data);
+    while (fgets(buffer, bufferLength, filePointer))
+    {
+        char *optauth;
+        char *rest;
+        optauth = strtok_r(buffer, "?", &rest);
 
-		pspDebugScreenSetXY(0, 0);
+        char *alg = NULL;
+        uint8_t dig = 0;
+        char *iss = NULL;
+        uint8_t per = 0;
+        char *sec = NULL;
 
-		seconds = 59;
+        // Parse
+        while (rest != NULL)
+        {
+            char *segment = strtok_r(rest, "&", &rest);
+            char *paramName;
+            char *value;
+            paramName = strtok_r(segment, "=", &value);
 
-		counter = seconds/30;
+            switch (lookup(paramName))
+            {
+            case ALG:
+                alg = value;
+                break;
+            case DIG:
+                dig = strtol(value, NULL, 10);
+                break;
+            case ISS:
+                iss = value;
+                break;
+            case PER:
+                per = strtol(value, NULL, 10);
+                break;
+            case SEC:
+                sec = value;
+                break;
+            }
+        }
 
-		memcpy(msg, &counter, 4);
+        if ((*cur) == NULL) {
+            (*cur) = (struct OTPKey *) malloc(sizeof(struct OTPKey));
+        }
 
-		uint8_t text[8] ;
-		for (int i = 7; i >= 0; i--) {
-			text[i] = (counter & 0xff);
-			counter >>= 8;
-		}
+        (*cur)->name = malloc(strlen(optauth));
+        strcpy((*cur)->name, optauth);
+        (*cur)->algorithm = malloc(strlen(alg));
+        strcpy((*cur)->algorithm, alg);
+        (*cur)->digits = dig;
+        (*cur)->period = per;
+        (*cur)->issuer = malloc(strlen(iss));
+        strcpy((*cur)->issuer, iss);
 
-		unsigned long outputSize = 20UL;
+        // Secret is Base32 string, so must first decode back to normal string
+        // Base32 uses 5 bits per character, but also must be multiple of 40 bits length
+        uint32_t decodedSize = (strlen(sec) * 8 + 4) / 5;
+        (*cur)->secret = malloc(decodedSize);
+        base32_decode(sec, (*cur)->secret, decodedSize);
+        (*cur)->next = NULL;
 
-		hmac_sha1(key, 20, text, 8, output, &outputSize);
+        cur = &(*cur)->next;
+    }
 
-		int offset   =  output[19] & 0xf ;
-        int bin_code = (output[offset]  & 0x7f) << 24
-           | (output[offset+1] & 0xff) << 16
-           | (output[offset+2] & 0xff) <<  8
-           | (output[offset+3] & 0xff) ;
+    fclose(filePointer);
+    return head;
+}
 
-		printf("Key: ");
-		for (int i = 0; i < 20; i++) {
-			printf("%x", key[i]);
-		}
-		printf("\n");
+uint32_t
+mod_hotp(uint32_t bin_code, int digits)
+{
+    int power = pow(10, digits);
+    uint32_t otp = bin_code % power;
 
-		printf("Counter: %lx", counter);
-		printf("\n");
+    return otp;
+}
 
-		printf("Output: ");
-		for (int i = 0; i < 20; i++) {
-			printf("%x", output[i]);
-		}
-		printf("\n");
-		printf("%d\n", bin_code);
+int
+calcToken(struct OTPKey *key, uint32_t counter)
+{
+    uint8_t text[8];
+    for (int i = 7; i >= 0; i--)
+    {
+        text[i] = (counter & 0xff);
+        counter >>= 8;
+    }
 
-		sceDisplayWaitVblankStart();
-	}
+    unsigned long bufLen = strlen(key->secret);
+    uint8_t output[bufLen];
+    unsigned long outputSize = 20UL;
 
-	sceKernelExitGame();	
+    hmac_sha1(key->secret, bufLen, text, 8, output, &bufLen);
 
-	// if(uid >= 0) sceIoClose(uid);
-	// free(data);
-	// data = 0;
+    int offset = output[bufLen-1] & 0xf ;
+    int bin_code = (output[offset]  & 0x7f) << 24
+        | (output[offset+1] & 0xff) << 16
+        | (output[offset+2] & 0xff) <<  8
+        | (output[offset+3] & 0xff) ;
+
+    return bin_code;
+}
+
+int
+main(int argc, char **argv)
+{
+    uint32_t counter, prev_counter = 0;
+
+    pspDebugScreenInit(); 
+    setupExitCallback();
+    printf("Reading OPTauth keys...");
+    struct OTPKey * head = readOTPFile(otpfile);
+
+    while (isRunning())
+    {
+        pspDebugScreenSetXY(0, 0);
+
+        printf(" Next Refresh: %lld s \n", 30 - (time(NULL) % 30));
+        printf("\n");
+        // Continue and don't clear the screen when the counter has not been changed
+        // TODO: Make counter check per token with different periods
+        counter = time(NULL) / 30;
+        if (counter == prev_counter)
+            continue;
 
 
-	return 0;
+        prev_counter = counter;
+
+        struct OTPKey *cur = head;
+        
+        while (cur != NULL)
+        {   
+            int code = calcToken(cur, counter);
+            printf(" > %s %d \n", cur->name, mod_hotp(code, cur->digits));
+            cur = cur->next;
+        }
+
+        cur = head;
+
+        sceDisplayWaitVblankStart();
+    }
+
+    sceKernelExitGame();
+
+    return 0;
 }
