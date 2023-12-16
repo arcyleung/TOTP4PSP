@@ -1,6 +1,7 @@
 #include <pspkernel.h>
 #include <pspdebug.h>
 #include <pspdisplay.h>
+#include <psputils.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +48,7 @@ struct OTPKey
     struct OTPKey *next;
 };
 
-char otpfile[] = "ms0:/PSP/COMMON/otpauth_file";
+char otpfile[] = "ms0:/PSP/COMMON/OTPAUTH_FILE";
 
 // Modified djb2 to convert string to some id
 uint8_t
@@ -63,7 +64,7 @@ lookup(char *str)
 struct OTPKey * 
 readOTPFile(char *filePath)
 {
-    struct OTPKey *head = (struct OTPKey *) malloc(sizeof(struct OTPKey));
+    struct OTPKey *head;
     struct OTPKey **cur = &head;
 
     FILE *filePointer;
@@ -71,6 +72,7 @@ readOTPFile(char *filePath)
     char buffer[bufferLength]; /* not ISO 90 compatible */
 
     filePointer = fopen(filePath, "r");
+
 
     while (fgets(buffer, bufferLength, filePointer))
     {
@@ -122,8 +124,11 @@ readOTPFile(char *filePath)
         strcpy((*cur)->algorithm, alg);
         (*cur)->digits = dig;
         (*cur)->period = per;
-        (*cur)->issuer = malloc(strlen(iss));
-        strcpy((*cur)->issuer, iss);
+        if (iss != NULL) {
+            (*cur)->issuer = malloc(strlen(iss));
+            strcpy((*cur)->issuer, iss);
+        }
+
 
         // Secret is Base32 string, so must first decode back to normal string
         // Base32 uses 5 bits per character, but also must be multiple of 40 bits length
@@ -160,7 +165,7 @@ calcToken(struct OTPKey *key, uint32_t counter)
 
     unsigned long bufLen = strlen(key->secret);
     uint8_t output[bufLen];
-    unsigned long outputSize = 20UL;
+    // unsigned long outputSize = 20UL;
 
     hmac_sha1(key->secret, bufLen, text, 8, output, &bufLen);
 
@@ -187,14 +192,16 @@ main(int argc, char **argv)
     {
         pspDebugScreenSetXY(0, 0);
 
-        printf(" Next Refresh: %lld s \n", 30 - (time(NULL) % 30));
+        time_t now;
+        sceKernelLibcTime(&now);
+        counter = now / 30;
+        printf(" Next Refresh: %lld s \n", 30 - (now % 30));
+        printf(" Counter: %ld, ts: %lld \n", counter, now);
         printf("\n");
         // Continue and don't clear the screen when the counter has not been changed
         // TODO: Make counter check per token with different periods
-        counter = time(NULL) / 30;
         if (counter == prev_counter)
             continue;
-
 
         prev_counter = counter;
 
@@ -203,7 +210,7 @@ main(int argc, char **argv)
         while (cur != NULL)
         {   
             int code = calcToken(cur, counter);
-            printf(" > %s %d \n", cur->name, mod_hotp(code, cur->digits));
+            printf(" > %s %ld \n", cur->name, mod_hotp(code, cur->digits));
             cur = cur->next;
         }
 
