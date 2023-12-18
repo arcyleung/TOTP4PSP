@@ -118,21 +118,31 @@ readOTPFile(char *filePath)
             (*cur) = (struct OTPKey *) malloc(sizeof(struct OTPKey));
         }
 
-        (*cur)->name = malloc(strlen(optauth));
-        strcpy((*cur)->name, optauth);
-        (*cur)->algorithm = malloc(strlen(alg));
+        // Extract the name without totp TOTP uri preamble
+        // char *begin_name = strrchr(optauth, 47);
+        // printf("%x %s\n", &optauth, begin_name);
+        // // begin_name = optauth +;
+        // if (begin_name == NULL) begin_name = optauth;
+
+        // (*cur)->name = malloc(strlen(optauth) + 1);
+        // memcpy((*cur)->name, optauth, strlen(optauth) + 1); // works
+        
+        int offset = 10;
+        (*cur)->name = malloc((strlen(optauth) - offset) + 1);
+        memcpy((*cur)->name, optauth+offset, (strlen(optauth) - offset) + 1);  // no work :(
+        
+        (*cur)->algorithm = malloc(strlen(alg) + 1);
         strcpy((*cur)->algorithm, alg);
         (*cur)->digits = dig;
         (*cur)->period = per;
         if (iss != NULL) {
-            (*cur)->issuer = malloc(strlen(iss));
+            (*cur)->issuer = malloc(strlen(iss) + 1);
             strcpy((*cur)->issuer, iss);
         }
 
-
         // Secret is Base32 string, so must first decode back to normal string
         // Base32 uses 5 bits per character, but also must be multiple of 40 bits length
-        uint32_t decodedSize = (strlen(sec) * 8 + 4) / 5;
+        uint32_t decodedSize = ((strlen(sec) + 1) * 8 + 4) / 5;
         (*cur)->secret = malloc(decodedSize);
         base32_decode(sec, (*cur)->secret, decodedSize);
         (*cur)->next = NULL;
@@ -163,17 +173,24 @@ calcToken(struct OTPKey *key, uint32_t counter)
         counter >>= 8;
     }
 
-    unsigned long bufLen = strlen(key->secret);
+    size_t bufLen;
+    if (strlen(key->secret) < 20) {
+        // TODO: fix with max
+        bufLen = 20 + 1UL;
+    } else {
+        bufLen = strlen(key->secret) + 1UL;
+    }
     uint8_t output[bufLen];
-    // unsigned long outputSize = 20UL;
 
     hmac_sha1(key->secret, bufLen, text, 8, output, &bufLen);
 
-    int offset = output[bufLen-1] & 0xf ;
-    int bin_code = (output[offset]  & 0x7f) << 24
+    int offset = output[bufLen-1] & 0xf;
+    // printf("%ld %ld \n", bufLen, offset);
+
+    int bin_code = (output[offset] & 0x7f) << 24
         | (output[offset+1] & 0xff) << 16
         | (output[offset+2] & 0xff) <<  8
-        | (output[offset+3] & 0xff) ;
+        | (output[offset+3] & 0xff);
 
     return bin_code;
 }
@@ -186,7 +203,9 @@ main(int argc, char **argv)
     pspDebugScreenInit(); 
     setupExitCallback();
     printf("Reading OPTauth keys...");
-    struct OTPKey * head = readOTPFile(otpfile);
+    struct OTPKey *head = readOTPFile(otpfile);
+
+     struct OTPKey *cur;
 
     while (isRunning())
     {
@@ -205,16 +224,14 @@ main(int argc, char **argv)
 
         prev_counter = counter;
 
-        struct OTPKey *cur = head;
+        cur = head;
         
         while (cur != NULL)
         {   
             int code = calcToken(cur, counter);
-            printf(" > %s %ld \n", cur->name, mod_hotp(code, cur->digits));
+            printf(" > %s %06d \n", cur->name, mod_hotp(code, cur->digits));
             cur = cur->next;
         }
-
-        cur = head;
 
         sceDisplayWaitVblankStart();
     }
