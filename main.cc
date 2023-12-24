@@ -1,7 +1,8 @@
 #include <pspkernel.h>
 #include <pspdebug.h>
-#include <pspdisplay.h>
 #include <psputils.h>
+#include <pspgu.h>
+#include <pspdisplay.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,9 @@
 #include "hmac-sha1/src/hmac/hmac.h"
 #include "base32/base32.h"
 #include "../common/callback.h"
+// #include "text_generator.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 
 #define VERS 1 // version
 #define REVS 0 // revision
@@ -22,8 +26,8 @@
 #define PER 66
 #define SEC 133
 
-PSP_MODULE_INFO("TOTP", PSP_MODULE_USER, VERS, REVS);
-PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
+// PSP_MODULE_INFO("TOTP", PSP_MODULE_USER, VERS, REVS);
+// PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
 PSP_HEAP_THRESHOLD_SIZE_KB(0);
 
 #define printf pspDebugScreenPrintf
@@ -50,6 +54,41 @@ struct OTPKey
 
 char otpfile[] = "ms0:/PSP/COMMON/OTPAUTH_FILE";
 
+
+SDL_Renderer *m_renderer;
+TTF_Font *font;
+void init_generator(const char *file, int font_size, SDL_Renderer &renderer)
+{
+    TTF_Init();
+    font = TTF_OpenFont(file, font_size);
+    m_renderer = &renderer;
+}
+void cleanup_generator()
+{
+    TTF_Quit();
+}
+
+void gen_text_at_rect(int x, int y, const char *text, SDL_Texture **texture, SDL_Rect *rect)
+{
+    int text_width;
+    int text_height;
+    SDL_Surface *surface;
+    SDL_Color textColor = {255, 255, 255, 255};
+
+    surface = TTF_RenderUTF8_Blended(font, text, textColor);
+    *texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+    text_width = surface->w;
+    text_height = surface->h;
+
+    rect->x = x;
+    rect->y = y;
+    rect->w = text_width;
+    rect->h = text_height;
+    SDL_FreeSurface(surface);
+    SDL_RenderCopy(m_renderer, *texture, NULL, rect);
+    SDL_DestroyTexture(*texture);
+}
+
 // Modified djb2 to convert string to some id
 uint8_t
 lookup(char *str)
@@ -61,6 +100,7 @@ lookup(char *str)
     return hash;
 }
 
+extern "C" OTPKey *readOTPFile(char *filePath);
 struct OTPKey * 
 readOTPFile(char *filePath)
 {
@@ -117,33 +157,24 @@ readOTPFile(char *filePath)
         if ((*cur) == NULL) {
             (*cur) = (struct OTPKey *) malloc(sizeof(struct OTPKey));
         }
-
-        // Extract the name without totp TOTP uri preamble
-        // char *begin_name = strrchr(optauth, 47);
-        // printf("%x %s\n", &optauth, begin_name);
-        // // begin_name = optauth +;
-        // if (begin_name == NULL) begin_name = optauth;
-
-        // (*cur)->name = malloc(strlen(optauth) + 1);
-        // memcpy((*cur)->name, optauth, strlen(optauth) + 1); // works
         
         int offset = 10;
-        (*cur)->name = malloc((strlen(optauth) - offset) + 1);
-        memcpy((*cur)->name, optauth+offset, (strlen(optauth) - offset) + 1);  // no work :(
+        (*cur)->name = (char*)malloc((strlen(optauth) - offset) + 1);
+        memcpy((*cur)->name, optauth+offset, (strlen(optauth) - offset) + 1);
         
-        (*cur)->algorithm = malloc(strlen(alg) + 1);
+        (*cur)->algorithm = (char*)malloc(strlen(alg) + 1);
         strcpy((*cur)->algorithm, alg);
         (*cur)->digits = dig;
         (*cur)->period = per;
         if (iss != NULL) {
-            (*cur)->issuer = malloc(strlen(iss) + 1);
+            (*cur)->issuer = (char*)malloc(strlen(iss) + 1);
             strcpy((*cur)->issuer, iss);
         }
 
         // Secret is Base32 string, so must first decode back to normal string
         // Base32 uses 5 bits per character, but also must be multiple of 40 bits length
         uint32_t decodedSize = ((strlen(sec) + 1) * 8 + 4) / 5;
-        (*cur)->secret = malloc(decodedSize);
+        (*cur)->secret = (char*)malloc(decodedSize);
         base32_decode(sec, (*cur)->secret, decodedSize);
         (*cur)->next = NULL;
 
@@ -163,6 +194,8 @@ mod_hotp(uint32_t bin_code, int digits)
     return otp;
 }
 
+extern "C" int calcToken(struct OTPKey *key, uint32_t counter);
+// extern "C" void hmac_sha1(const uint8_t* key, const uint32_t keysize, const uint8_t* msg, const uint32_t msgsize, uint8_t* output);
 int
 calcToken(struct OTPKey *key, uint32_t counter)
 {
@@ -173,7 +206,7 @@ calcToken(struct OTPKey *key, uint32_t counter)
         counter >>= 8;
     }
 
-    size_t bufLen;
+    uint32_t bufLen;
     if (strlen(key->secret) < 20) {
         // TODO: fix with max
         bufLen = 20 + 1UL;
@@ -182,7 +215,7 @@ calcToken(struct OTPKey *key, uint32_t counter)
     }
     uint8_t output[bufLen];
 
-    hmac_sha1(key->secret, bufLen, text, 8, output, &bufLen);
+    hmac_sha1((uint8_t*)(key->secret), bufLen, text, 8, output, &bufLen);
 
     int offset = output[bufLen-1] & 0xf;
     // printf("%ld %ld \n", bufLen, offset);
@@ -195,6 +228,7 @@ calcToken(struct OTPKey *key, uint32_t counter)
     return bin_code;
 }
 
+extern "C" int SDL_main(int argc, char *argv[]);
 int
 main(int argc, char **argv)
 {
@@ -205,12 +239,20 @@ main(int argc, char **argv)
     printf("Reading OPTauth keys...");
     struct OTPKey *head = readOTPFile(otpfile);
 
-     struct OTPKey *cur;
+    struct OTPKey *cur;
+    
+    // SDL_Texture *texture1;
+    // SDL_Rect rect1;
+    // SDL_Window *window = SDL_CreateWindow("SDL TTF Test", 0, 0, 480, 272, NULL);
+    // SDL_Renderer *renderer = SDL_CreateRenderer(window, 0, NULL);
+    // SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+
+    // init_generator("cambriai.ttf", 24, *renderer);
+
 
     while (isRunning())
     {
         pspDebugScreenSetXY(0, 0);
-
         time_t now;
         sceKernelLibcTime(&now);
         counter = now / 30;
@@ -229,13 +271,19 @@ main(int argc, char **argv)
         while (cur != NULL)
         {   
             int code = calcToken(cur, counter);
-            printf(" > %s %06d \n", cur->name, mod_hotp(code, cur->digits));
+            printf(" > %s %06ld \n", cur->name, mod_hotp(code, cur->digits));
             cur = cur->next;
         }
 
+        // SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        // SDL_RenderClear(renderer);
+        // gen_text_at_rect(0, 0, "SDL2 + SDL TTF EXAMPLE", &texture1, &rect1);
+        // SDL_RenderPresent(renderer);
+        // SDL_UpdateWindowSurface(window);
+
         sceDisplayWaitVblankStart();
     }
-
+    cleanup_generator();
     sceKernelExitGame();
 
     return 0;

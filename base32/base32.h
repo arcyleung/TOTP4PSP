@@ -30,10 +30,7 @@
 
 #include <stdint.h>
 
-int base32_decode(const char *encoded, char *result, int bufSize)
-    __attribute__((visibility("hidden")));
-int base32_encode(const char *data, int length, char *result,
-                  int bufSize)
-    __attribute__((visibility("hidden")));
+int base32_decode(const char *encoded, char *result, int bufSize);
+int base32_encode(const char *data, int length, char *result, int bufSize);
 
 #endif /* _BASE32_H_ */
