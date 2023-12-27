@@ -12,6 +12,9 @@
 #include "base32/base32.h"
 #include "../common/callback.h"
 
+#include "./intrafont031g/libraries/graphics.h"
+#include "./intrafont031g/intraFont.h"
+
 #define VERS 1 // version
 #define REVS 0 // revision
 
@@ -64,7 +67,7 @@ lookup(char *str)
 struct OTPKey * 
 readOTPFile(char *filePath)
 {
-    struct OTPKey *head;
+    struct OTPKey *head = NULL;
     struct OTPKey **cur = &head;
 
     FILE *filePointer;
@@ -72,7 +75,6 @@ readOTPFile(char *filePath)
     char buffer[bufferLength]; /* not ISO 90 compatible */
 
     filePointer = fopen(filePath, "r");
-
 
     while (fgets(buffer, bufferLength, filePointer))
     {
@@ -120,14 +122,13 @@ readOTPFile(char *filePath)
 
         // Extract the name without totp TOTP uri preamble
         // char *begin_name = strrchr(optauth, 47);
-        // printf("%x %s\n", &optauth, begin_name);
         // // begin_name = optauth +;
         // if (begin_name == NULL) begin_name = optauth;
 
         // (*cur)->name = malloc(strlen(optauth) + 1);
         // memcpy((*cur)->name, optauth, strlen(optauth) + 1); // works
         
-        int offset = 10;
+        int offset = 15;
         (*cur)->name = malloc((strlen(optauth) - offset) + 1);
         memcpy((*cur)->name, optauth+offset, (strlen(optauth) - offset) + 1);  // no work :(
         
@@ -195,21 +196,61 @@ calcToken(struct OTPKey *key, uint32_t counter)
     return bin_code;
 }
 
+  // Colors
+  enum colors {
+    RED =  0xFF0000FF,
+    GREEN =  0xFF00FF00,
+    BLUE =  0xFFFF0000,
+    WHITE =  0xFFFFFFFF,
+    LITEGRAY = 0xFFBFBFBF,
+    GRAY =  0xFF7F7F7F,
+    DARKGRAY = 0xFF3F3F3F,    
+    BLACK = 0xFF000000,
+  };
+
 int
 main(int argc, char **argv)
 {
-    uint32_t counter, prev_counter = 0;
-
     pspDebugScreenInit(); 
     setupExitCallback();
+    intraFontInit();
+    
+    // Load fonts
+    intraFont* ltn[16];                                         //latin fonts (large/small,with/without serif,regular/italic/bold/italic&bold)
+    char file[40];
+    int i;
+    for (i = 0; i < 16; i++) {
+        sprintf(file,"flash0:/font/ltn%d.pgf",i); 
+        ltn[i] = intraFontLoad(file,INTRAFONT_CACHE_ALL);
+        pspDebugScreenSetXY(15,2);
+        pspDebugScreenPrintf("%d%%",(i+1)*100/20);
+    }
+
+    if(!ltn[0] || !ltn[4] || !ltn[8]) sceKernelExitGame();
+
+    uint32_t counter, prev_counter = 0;
+
     printf("Reading OPTauth keys...");
     struct OTPKey *head = readOTPFile(otpfile);
 
-     struct OTPKey *cur;
+    struct OTPKey *cur;
+
+    float x_label = 125;
+    float x_code = 5;
+    int vscroll_offset = 0;
+    initGraphics();
 
     while (isRunning())
     {
         pspDebugScreenSetXY(0, 0);
+
+        clearScreen(BLACK);
+        intraFontSetStyle(ltn[8],2.0f,WHITE,0U,0.f,0);
+        intraFontSetStyle(ltn[6],1.0f,WHITE,0U,0.f,INTRAFONT_SCROLL_LEFT);
+        float x,y = 20;
+
+        // // Must be called before any of the intraFont functions
+        guStart();
 
         time_t now;
         sceKernelLibcTime(&now);
@@ -219,21 +260,42 @@ main(int argc, char **argv)
         printf("\n");
         // Continue and don't clear the screen when the counter has not been changed
         // TODO: Make counter check per token with different periods
-        if (counter == prev_counter)
-            continue;
+        // if (counter == prev_counter)
+        //     continue;
 
         prev_counter = counter;
 
         cur = head;
+
+        int curpos = 0;
+        int shown = 0;
+
+        while(curpos < vscroll_offset) { 
+            cur = cur->next;
+            curpos += 1;
+        }
         
-        while (cur != NULL)
+        while (cur != NULL && shown < 12)
         {   
             int code = calcToken(cur, counter);
-            printf(" > %s %06d \n", cur->name, mod_hotp(code, cur->digits));
+            char strcode[7];
+            sprintf(&strcode, "%06d", mod_hotp(code, cur->digits));
+            intraFontPrint(ltn[6],x_label,y-4,cur->name);
+            intraFontPrint(ltn[8],x_code,y,strcode);
+            y += 22;
+
+            // printf(" > %s %06d \n", cur->name, mod_hotp(code, cur->digits));
+            shown += 1;
             cur = cur->next;
         }
 
+        // End drawing
+        sceGuFinish();
+        sceGuSync(0,0);
+        
+        // // Swap buffers
         sceDisplayWaitVblankStart();
+        flipScreen();
     }
 
     sceKernelExitGame();
