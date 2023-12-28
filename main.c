@@ -2,6 +2,7 @@
 #include <pspdebug.h>
 #include <pspdisplay.h>
 #include <psputils.h>
+#include <pspctrl.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +53,8 @@ struct OTPKey
 };
 
 char otpfile[] = "ms0:/PSP/COMMON/OTPAUTH_FILE";
+
+int num_otp_keys = 0;
 
 // Modified djb2 to convert string to some id
 uint8_t
@@ -149,6 +152,7 @@ readOTPFile(char *filePath)
         (*cur)->next = NULL;
 
         cur = &(*cur)->next;
+        num_otp_keys += 1;
     }
 
     fclose(filePointer);
@@ -214,6 +218,10 @@ main(int argc, char **argv)
     pspDebugScreenInit(); 
     setupExitCallback();
     intraFontInit();
+
+    SceCtrlData buttonInput;
+    sceCtrlSetSamplingCycle(0);
+	sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     
     // Load fonts
     intraFont* ltn[16];                                         //latin fonts (large/small,with/without serif,regular/italic/bold/italic&bold)
@@ -235,10 +243,11 @@ main(int argc, char **argv)
 
     struct OTPKey *cur;
 
-    float x_label = 125;
+    float x_label = 130;
     float x_code = 5;
     int vscroll_offset = 0;
     initGraphics();
+
 
     while (isRunning())
     {
@@ -255,9 +264,9 @@ main(int argc, char **argv)
         time_t now;
         sceKernelLibcTime(&now);
         counter = now / 30;
-        printf(" Next Refresh: %lld s \n", 30 - (now % 30));
-        printf(" Counter: %ld, ts: %lld \n", counter, now);
-        printf("\n");
+        // printf(" Next Refresh: %lld s \n", 30 - (now % 30));
+        // printf(" Counter: %ld, ts: %lld \n", counter, now);
+        // printf("\n");
         // Continue and don't clear the screen when the counter has not been changed
         // TODO: Make counter check per token with different periods
         // if (counter == prev_counter)
@@ -266,9 +275,19 @@ main(int argc, char **argv)
         prev_counter = counter;
 
         cur = head;
-
         int curpos = 0;
         int shown = 0;
+
+        sceCtrlPeekBufferPositive(&buttonInput, 1);
+        if(buttonInput.Buttons != 0) 
+		{ 
+            if(buttonInput.Buttons & PSP_CTRL_UP) {
+                if (vscroll_offset > 0) vscroll_offset -= 1;
+            }
+			if(buttonInput.Buttons & PSP_CTRL_DOWN) {
+                if (vscroll_offset < (num_otp_keys - 12)) vscroll_offset += 1;
+            }
+        }
 
         while(curpos < vscroll_offset) { 
             cur = cur->next;
