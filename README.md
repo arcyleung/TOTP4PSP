@@ -1,4 +1,4 @@
-# Time-based One-Time Password for Playstation Portable (TOTP4PSP) 
+# Time-based One-Time Password for PlayStation Portable (TOTP4PSP) 
 
 This homebrew program implements TOTP (RFC 6238) and lets you use your PSP as an authenticator device to many 2FA systems. The user must provide a keyfile with each line as a seperate TOTP authenticator, which can be exported from Google Authenticator for example with a tool such as [otpauth](https://github.com/dim13/otpauth). The exact format is explained under [Installation](#installation)
 
