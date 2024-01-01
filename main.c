@@ -3,6 +3,7 @@
 #include <pspdisplay.h>
 #include <psputils.h>
 #include <pspctrl.h>
+#include <pspgu.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,7 +53,7 @@ struct OTPKey
     struct OTPKey *next;
 };
 
-char otpfile[] = "ms0:/PSP/COMMON/OTPAUTH_FILE";
+char otpfile[] = "ms0:/PSP/COMMON/OTPAUTH_KEYS";
 
 int num_otp_keys = 0;
 
@@ -122,18 +123,10 @@ readOTPFile(char *filePath)
         if ((*cur) == NULL) {
             (*cur) = (struct OTPKey *) malloc(sizeof(struct OTPKey));
         }
-
-        // Extract the name without totp TOTP uri preamble
-        // char *begin_name = strrchr(optauth, 47);
-        // // begin_name = optauth +;
-        // if (begin_name == NULL) begin_name = optauth;
-
-        // (*cur)->name = malloc(strlen(optauth) + 1);
-        // memcpy((*cur)->name, optauth, strlen(optauth) + 1); // works
         
         int offset = 15;
         (*cur)->name = malloc((strlen(optauth) - offset) + 1);
-        memcpy((*cur)->name, optauth+offset, (strlen(optauth) - offset) + 1);  // no work :(
+        memcpy((*cur)->name, optauth+offset, (strlen(optauth) - offset) + 1);
         
         (*cur)->algorithm = malloc(strlen(alg) + 1);
         strcpy((*cur)->algorithm, alg);
@@ -178,7 +171,7 @@ calcToken(struct OTPKey *key, uint32_t counter)
         counter >>= 8;
     }
 
-    size_t bufLen;
+    uint32_t bufLen;
     if (strlen(key->secret) < 20) {
         // TODO: fix with max
         bufLen = 20 + 1UL;
@@ -190,7 +183,6 @@ calcToken(struct OTPKey *key, uint32_t counter)
     hmac_sha1(key->secret, bufLen, text, 8, output, &bufLen);
 
     int offset = output[bufLen-1] & 0xf;
-    // printf("%ld %ld \n", bufLen, offset);
 
     int bin_code = (output[offset] & 0x7f) << 24
         | (output[offset+1] & 0xff) << 16
@@ -236,9 +228,9 @@ main(int argc, char **argv)
 
     if(!ltn[0] || !ltn[4] || !ltn[8]) sceKernelExitGame();
 
-    uint32_t counter, prev_counter = 0;
+    uint32_t counter = 0;
 
-    printf("Reading OPTauth keys...");
+    printf("Reading OTPauth keys...");
     struct OTPKey *head = readOTPFile(otpfile);
 
     struct OTPKey *cur;
@@ -256,9 +248,9 @@ main(int argc, char **argv)
         clearScreen(BLACK);
         intraFontSetStyle(ltn[8],2.0f,WHITE,0U,0.f,0);
         intraFontSetStyle(ltn[6],1.0f,WHITE,0U,0.f,INTRAFONT_SCROLL_LEFT);
-        float x,y = 20;
+        float y = 20;
 
-        // // Must be called before any of the intraFont functions
+        // Must be called before any of the intraFont functions
         guStart();
 
         time_t now;
@@ -272,7 +264,7 @@ main(int argc, char **argv)
         // if (counter == prev_counter)
         //     continue;
 
-        prev_counter = counter;
+        // prev_counter = counter;
 
         cur = head;
         int curpos = 0;
@@ -298,7 +290,7 @@ main(int argc, char **argv)
         {   
             int code = calcToken(cur, counter);
             char strcode[7];
-            sprintf(&strcode, "%06d", mod_hotp(code, cur->digits));
+            sprintf(strcode, "%06ld", mod_hotp(code, cur->digits));
             intraFontPrint(ltn[6],x_label,y-4,cur->name);
             intraFontPrint(ltn[8],x_code,y,strcode);
             y += 22;

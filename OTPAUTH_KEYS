@@ -1,0 +1,1 @@
+otpauth://totp/RFC6238_Example?algorithm=SHA1&digits=6&issuer=RFC6238&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ
