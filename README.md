@@ -3,7 +3,9 @@
     <img src="totp4psp.jpg" width="65%" />
 </p>
 
-This homebrew program implements TOTP (RFC 6238) and lets you use your PSP as an authenticator device to many 2FA systems. The user must provide their own keyfile with each line as a seperate TOTP authenticator, which can be exported from Google Authenticator for example with a tool such as [otpauth](https://github.com/dim13/otpauth). The exact format is explained under [Installation](#installation) and an example OTPAUTH_KEYS file is provided for reference.
+This homebrew program implements TOTP (RFC 6238) and lets you use your PSP as a hardware token generator to many 2FA authentication systems. Other 2FA methods are weaker (SMS-based 2FA is susceptible to SIM swapping attacks for instance) and so the safest option is still to have an offline generator.
+
+The user must provide their own OTPAUTH_KEYS file with each line as a seperate TOTP authenticator URI, which can be exported from Google Authenticator for example with a tool such as [otpauth](https://github.com/dim13/otpauth). The exact format is explained [here](https://github.com/google/google-authenticator/wiki/Key-Uri-Format) and is discussed further under [Installation](#installation); an example OTPAUTH_KEYS file is also provided for reference.
 
 ## Prerequisites
 
