@@ -12,10 +12,10 @@
 #include <math.h>
 #include "hmac-sha1/src/hmac/hmac.h"
 #include "base32/base32.h"
-#include "../common/callback.h"
+#include "common/callback.h"
 
-#include "./intrafont031g/libraries/graphics.h"
-#include "./intrafont031g/intraFont.h"
+#include "intrafont031g/libraries/graphics.h"
+#include "intrafont031g/intraFont.h"
 
 #define VERS 1 // version
 #define REVS 0 // revision
