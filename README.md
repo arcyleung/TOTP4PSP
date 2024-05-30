@@ -7,6 +7,8 @@ This homebrew program implements TOTP (RFC 6238) and lets you use your PSP as a 
 
 The user must provide their own OTPAUTH_KEYS file with each line as a seperate TOTP authenticator URI, which can be exported from Google Authenticator for example with a tool such as [otpauth](https://github.com/dim13/otpauth). The exact format is explained [here](https://github.com/google/google-authenticator/wiki/Key-Uri-Format) and is discussed further under [Installation](#installation); an example OTPAUTH_KEYS file is also provided for reference.
 
+Here is a YouTube link to my PSPHDC24' talk: https://www.youtube.com/live/0rxTPSFSC-k?t=2512s
+
 ## Prerequisites
 
 - A PSP 1000/2000/3000 with any CFW
