@@ -2,3 +2,5 @@
 *.PBP
 *.elf
 *.SFO
+# Host test binary
+tests/test_totp

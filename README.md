@@ -39,20 +39,32 @@ otpauth://totp/<name2>?algorithm=SHA1&digits=6&issuer=<issuer2>&period=30&secret
 
 The following fields and parameters are currently supported:
 ```
-algorithm=[SHA1]        <- TODO: Implement SHA256|SHA512 
-digits=[6]              <- TODO: Implement 8 digits
-period=[30s]            <- TODO: Implement 60s
-issuer=<any string>     <- TODO: Display it in some useful way
-secret=<base32 secret>
+algorithm=SHA1          <- TODO: SHA256|SHA512 (parsed, not yet used for HMAC)
+digits=6|7|8            <- mod 10^digits; display width follows digits
+period=<seconds>        <- per-key TOTP step (default 30 if missing/0)
+issuer=<any string>     <- TODO: show on UI (stored, not drawn yet)
+secret=<base32 secret>  <- required; decoded to raw key bytes
 ```
 
 ## Building from Source
 
-Prerequisites: a working installation of the [psptoolchain](https://github.com/pspdev/psptoolchain) (psp-gcc)  
-1. Clone this repo and its submodules with `git clone --recurse-submodules https://github.com/arcyleung/TOTP4PSP.git TOTP4PSP/`
+Prerequisites: a working installation of the [pspdev](https://github.com/pspdev/pspdev) / [psptoolchain](https://github.com/pspdev/psptoolchain) (`psp-gcc`)  
+1. Clone this repo: `git clone https://github.com/arcyleung/TOTP4PSP.git TOTP4PSP/`
 2. `cd ./TOTP4PSP`
-3. Verify that `psp-gcc` is accessible in your current shell (psptoolchain should have set up your PATH automatically)
+3. Verify that `psp-gcc` is accessible in your current shell (`export PATH="$PSPDEV/bin:$PATH"` if needed)
 4. Run `make` and use the generated `EBOOT.PBP` for the steps in [Installation](#installation)
+
+### Host unit tests (no PSP SDK)
+
+RFC 6238 / HMAC regression tests for the TOTP core (recommended after any crypto change):
+
+```
+make host-test
+```
+
+These tests also document a historical bug: secrets were treated as C strings and short keys
+forced a 21-byte HMAC key length, so many real authenticator secrets (often 10–16 bytes after
+base32 decode) mixed uninitialized heap into the key and produced wrong codes.
 
 ## Credits
 BenHur for [intraFont](https://github.com/PSP-Archive/intraFont)  
