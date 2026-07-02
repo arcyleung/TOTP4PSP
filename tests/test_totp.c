@@ -219,8 +219,86 @@ test_embedded_nul_in_secret(void)
         g_passed++;
     }
 
-    EXPECT_EQ_U32("fixed embedded-NUL uses full length",
-                  mod_hotp(calc_hotp(secret, full_len, counter), 6), good);
+    /* Stability: second call with full length matches first (shipped path). */
+    EXPECT_EQ_U32("calc_totp full length stable",
+                  calc_totp(secret, full_len, counter, 6), good);
+    EXPECT_EQ_U32("calc_totp rejects strlen-truncation as different",
+                  calc_totp(secret, 3, counter, 6), truncated);
+}
+
+static void
+test_digits_clamp(void)
+{
+    const uint8_t *sec = (const uint8_t *)"12345678901234567890";
+    uint32_t six = calc_totp(sec, 20, 1, 6);
+    uint32_t eight = calc_totp(sec, 20, 1, 8);
+
+    EXPECT_EQ_U32("digits 6 counter=1", six, 287082u);
+    EXPECT_EQ_U32("digits 8 counter=1", eight, 94287082u);
+    /* Out-of-range must clamp to 6, not smash or mod-overflow. */
+    EXPECT_EQ_U32("digits 99 clamps to 6-digit code",
+                  calc_totp(sec, 20, 1, 99), six);
+    EXPECT_EQ_U32("digits 0 clamps to 6-digit code",
+                  calc_totp(sec, 20, 1, 0), six);
+    EXPECT_EQ_U32("totp_clamp_digits(99)==6",
+                  (uint32_t)totp_clamp_digits(99), 6u);
+    EXPECT_EQ_U32("totp_clamp_digits(8)==8",
+                  (uint32_t)totp_clamp_digits(8), 8u);
+}
+
+static void
+test_secret_len_decode_contract(void)
+{
+    /*
+     * Shipped contract used by main.c: totp_decode_secret_b32 → secret_len →
+     * calc_totp(secret, secret_len, ...). Must ignore trailing garbage.
+     */
+    const char *b32 = "JBSWY3DPEHPK3PXP";
+    uint8_t buf[64];
+    size_t secret_len = 0;
+    uint32_t with_garbage;
+    uint32_t clean;
+    size_t i;
+
+    memset(buf, 0xA5, sizeof(buf));
+    if (totp_decode_secret_b32(b32, buf, (int)sizeof(buf), &secret_len) != 0) {
+        fprintf(stderr, "FAIL: totp_decode_secret_b32 JBSWY3DPEHPK3PXP\n");
+        g_failed++;
+        return;
+    }
+    EXPECT_EQ_U32("decode contract length 10", (uint32_t)secret_len, 10u);
+
+    /* Paint beyond secret_len; correct code must ignore it. */
+    for (i = secret_len; i < sizeof(buf); i++)
+        buf[i] = (uint8_t)(0x5A ^ (unsigned)i);
+
+    with_garbage = calc_totp(buf, secret_len, 1, 6);
+
+    memset(buf, 0, sizeof(buf));
+    if (totp_decode_secret_b32(b32, buf, (int)sizeof(buf), &secret_len) != 0) {
+        fprintf(stderr, "FAIL: re-decode JBSWY3DPEHPK3PXP\n");
+        g_failed++;
+        return;
+    }
+    clean = calc_totp(buf, secret_len, 1, 6);
+    EXPECT_EQ_U32("decode contract ignores post-length garbage",
+                  with_garbage, clean);
+    EXPECT_EQ_U32("JBSWY3DPEHPK3PXP counter=1 is 996554", clean, 996554u);
+
+    /* Invalid base32 must fail (main skips such keys). */
+    {
+        size_t bad_len = 99;
+        int rc = totp_decode_secret_b32("!!!!not-base32!!!!", buf, (int)sizeof(buf),
+                                        &bad_len);
+        if (rc != -1 || bad_len != 0) {
+            fprintf(stderr, "FAIL: invalid b32 should return -1 and len 0 (rc=%d len=%zu)\n",
+                    rc, bad_len);
+            g_failed++;
+        } else {
+            printf("PASS: invalid base32 rejected by totp_decode_secret_b32\n");
+            g_passed++;
+        }
+    }
 }
 
 static void
@@ -280,6 +358,8 @@ main(void)
     test_rfc_secret_unaffected_by_plus_one_nul();
     test_short_secret_with_heap_garbage();
     test_embedded_nul_in_secret();
+    test_digits_clamp();
+    test_secret_len_decode_contract();
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;

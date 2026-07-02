@@ -7,6 +7,7 @@
 #ifndef HMAC_H_
 #define HMAC_H_ (1)
 
+#include <stddef.h>
 #include <stdint.h>
 
 void hmac_sha1(const uint8_t *k,   /* secret key */

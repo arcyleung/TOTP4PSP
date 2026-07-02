@@ -138,7 +138,7 @@ readOTPFile(const char *filePath)
         if ((*cur)->algorithm)
             strcpy((*cur)->algorithm, alg);
 
-        (*cur)->digits = dig ? dig : 6;
+        (*cur)->digits = (uint8_t)totp_clamp_digits((int)dig);
         (*cur)->period = per ? per : 30;
         (*cur)->issuer = NULL;
         if (iss != NULL) {
@@ -147,19 +147,27 @@ readOTPFile(const char *filePath)
                 strcpy((*cur)->issuer, iss);
         }
 
-        /* Base32 secret → raw key bytes; length from decoder return value. */
+        /* Base32 secret → raw key bytes via shipped decoder contract. */
         {
             size_t sec_chars = strlen(sec);
             uint32_t decodedSize = (uint32_t)((sec_chars + 1) * 8 + 4) / 5;
-            int n;
+            size_t secret_len = 0;
 
             (*cur)->secret = malloc(decodedSize);
-            if ((*cur)->secret == NULL) {
-                (*cur)->secret_len = 0;
-            } else {
-                n = base32_decode(sec, (char *)(*cur)->secret, (int)decodedSize);
-                (*cur)->secret_len = (n < 0) ? 0 : (size_t)n;
+            if ((*cur)->secret == NULL ||
+                totp_decode_secret_b32(sec, (*cur)->secret, (int)decodedSize,
+                                       &secret_len) != 0 ||
+                secret_len == 0) {
+                /* MF-2: never surface empty/invalid secrets as live codes. */
+                free((*cur)->secret);
+                free((*cur)->name);
+                free((*cur)->algorithm);
+                free((*cur)->issuer);
+                free(*cur);
+                *cur = NULL;
+                continue;
             }
+            (*cur)->secret_len = secret_len;
         }
 
         (*cur)->next = NULL;
@@ -241,12 +249,12 @@ main(int argc, char **argv)
         while (cur != NULL && shown < 12) {
             uint8_t period = cur->period ? cur->period : 30;
             uint64_t key_counter = (uint64_t)now / (uint64_t)period;
-            uint32_t code = calc_hotp(cur->secret, cur->secret_len, key_counter);
+            int digits = totp_clamp_digits((int)cur->digits);
+            uint32_t code = calc_totp(cur->secret, cur->secret_len, key_counter,
+                                     digits);
             char strcode[16];
-            int digits = cur->digits ? (int)cur->digits : 6;
 
-            sprintf(strcode, "%0*lu", digits,
-                    (unsigned long)mod_hotp(code, digits));
+            sprintf(strcode, "%0*lu", digits, (unsigned long)code);
             if (cur->name)
                 intraFontPrint(ltn[6], x_label, y - 4, cur->name);
             intraFontPrint(ltn[8], x_code, y, strcode);
