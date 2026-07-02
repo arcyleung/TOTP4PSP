@@ -1,3 +1,0 @@
-[submodule "hmac-sha1"]
-	path = hmac-sha1
-	url = ./hmac-sha1/

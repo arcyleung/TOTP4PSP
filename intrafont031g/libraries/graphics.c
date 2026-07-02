@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <malloc.h>
 #include <pspdisplay.h>
 #include <psputils.h>
